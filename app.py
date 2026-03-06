@@ -1,13 +1,23 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
+import joblib
+import matplotlib.pyplot as plt
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+
+st.set_page_config(page_title="Audible Recommendation System", layout="wide")
 
 # ==============================
 # LOAD DATA
 # ==============================
 
-df = pd.read_csv("data/clean_books.csv")
+@st.cache_data
+def load_data():
+    df = pd.read_csv("data/books_with_clusters.csv")
+    return df
+
+df = load_data()
 
 # ==============================
 # CREATE TEXT FEATURES
@@ -24,9 +34,16 @@ df["text_features"] = (
 # TF-IDF
 # ==============================
 
-tfidf = TfidfVectorizer(stop_words="english")
+@st.cache_data
+def create_tfidf(data):
 
-tfidf_matrix = tfidf.fit_transform(df["text_features"])
+    tfidf = TfidfVectorizer(stop_words="english", max_features=5000)
+
+    matrix = tfidf.fit_transform(data)
+
+    return matrix
+
+tfidf_matrix = create_tfidf(df["text_features"])
 
 # ==============================
 # COSINE SIMILARITY
@@ -35,10 +52,10 @@ tfidf_matrix = tfidf.fit_transform(df["text_features"])
 cosine_sim = cosine_similarity(tfidf_matrix, tfidf_matrix)
 
 # ==============================
-# RECOMMEND FUNCTION
+# CONTENT BASED RECOMMENDATION
 # ==============================
 
-def recommend(book_title, top_n=5):
+def content_recommend(book_title, n=5):
 
     idx = df[df["Book Name"] == book_title].index[0]
 
@@ -46,38 +63,120 @@ def recommend(book_title, top_n=5):
 
     scores = sorted(scores, key=lambda x: x[1], reverse=True)
 
-    scores = scores[1:top_n+1]
+    scores = scores[1:n+1]
 
-    book_indices = [i[0] for i in scores]
+    indices = [i[0] for i in scores]
 
-    return df.iloc[book_indices][["Book Name","Author","Rating"]]
+    return df.iloc[indices][["Book Name","Author","Rating"]]
 
 # ==============================
-# STREAMLIT UI
+# CLUSTER RECOMMENDATION
+# ==============================
+
+def cluster_recommend(book_title, n=5):
+
+    cluster = df[df["Book Name"] == book_title]["cluster"].values[0]
+
+    recs = df[df["cluster"] == cluster]
+
+    recs = recs[recs["Book Name"] != book_title]
+
+    return recs[["Book Name","Author","Rating"]].head(n)
+
+# ==============================
+# HYBRID RECOMMENDATION
+# ==============================
+
+def hybrid_recommend(book_title, n=5):
+
+    idx = df[df["Book Name"] == book_title].index[0]
+
+    scores = list(enumerate(cosine_sim[idx]))
+
+    scores = sorted(scores, key=lambda x: x[1], reverse=True)
+
+    scores = scores[1:20]
+
+    indices = [i[0] for i in scores]
+
+    temp = df.iloc[indices].copy()
+
+    temp["popularity"] = temp["Rating"] * np.log1p(temp["Number of Reviews"])
+
+    temp = temp.sort_values("popularity", ascending=False)
+
+    return temp[["Book Name","Author","Rating"]].head(n)
+
+# ==============================
+# UI
 # ==============================
 
 st.title("📚 Audible Intelligent Book Recommendation System")
 
-st.write("Select a book to get similar book recommendations.")
+st.write("Choose a recommendation model and book.")
+
+# Model selector
+
+model_type = st.radio(
+    "Recommendation Model",
+    ["Content Based","Clustering Based","Hybrid"]
+)
+
+# Book selector
 
 book_list = df["Book Name"].sort_values().unique()
 
-selected_book = st.selectbox(
-    "Choose a Book",
-    book_list
-)
+selected_book = st.selectbox("Select Book", book_list)
+
+# Recommendation
 
 if st.button("Recommend"):
 
-    recommendations = recommend(selected_book)
+    if model_type == "Content Based":
 
-    st.subheader("📖 Recommended Books")
+        recs = content_recommend(selected_book)
 
-    st.dataframe(recommendations)
+    elif model_type == "Clustering Based":
+
+        recs = cluster_recommend(selected_book)
+
+    else:
+
+        recs = hybrid_recommend(selected_book)
+
+    st.subheader("Recommended Books")
+
+    st.dataframe(recs)
 
 # ==============================
-# TOP RATED BOOKS
+# ANALYTICS DASHBOARD
 # ==============================
+
+st.header("📊 Dataset Analytics")
+
+col1, col2, col3 = st.columns(3)
+
+col1.metric("Total Books", len(df))
+
+col2.metric("Total Authors", df["Author"].nunique())
+
+col3.metric("Average Rating", round(df["Rating"].mean(),2))
+
+# Genre distribution
+
+st.subheader("Top Genres")
+
+genre_counts = df["Ranks and Genre"].value_counts().head(10)
+
+fig, ax = plt.subplots()
+
+genre_counts.plot(kind="bar", ax=ax)
+
+plt.xticks(rotation=45)
+
+st.pyplot(fig)
+
+# Top rated books
 
 st.subheader("⭐ Top Rated Books")
 
