@@ -1,16 +1,14 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import joblib
-import matplotlib.pyplot as plt
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-st.set_page_config(page_title="Audible Recommendation System", layout="wide")
+st.set_page_config(page_title="Audible Book Recommendation", layout="wide")
 
-# ==============================
+# ===============================
 # LOAD DATA
-# ==============================
+# ===============================
 
 @st.cache_data
 def load_data():
@@ -19,9 +17,9 @@ def load_data():
 
 df = load_data()
 
-# ==============================
+# ===============================
 # CREATE TEXT FEATURES
-# ==============================
+# ===============================
 
 df["text_features"] = (
     df["Book Name"].fillna("") + " " +
@@ -30,30 +28,30 @@ df["text_features"] = (
     df["Ranks and Genre"].fillna("")
 )
 
-# ==============================
+# ===============================
 # TF-IDF
-# ==============================
+# ===============================
 
 @st.cache_data
-def create_tfidf(data):
+def create_tfidf(text):
 
     tfidf = TfidfVectorizer(stop_words="english", max_features=5000)
 
-    matrix = tfidf.fit_transform(data)
+    matrix = tfidf.fit_transform(text)
 
     return matrix
 
 tfidf_matrix = create_tfidf(df["text_features"])
 
-# ==============================
+# ===============================
 # COSINE SIMILARITY
-# ==============================
+# ===============================
 
-cosine_sim = cosine_similarity(tfidf_matrix, tfidf_matrix)
+cosine_sim = cosine_similarity(tfidf_matrix)
 
-# ==============================
+# ===============================
 # CONTENT BASED RECOMMENDATION
-# ==============================
+# ===============================
 
 def content_recommend(book_title, n=5):
 
@@ -69,9 +67,9 @@ def content_recommend(book_title, n=5):
 
     return df.iloc[indices][["Book Name","Author","Rating"]]
 
-# ==============================
+# ===============================
 # CLUSTER RECOMMENDATION
-# ==============================
+# ===============================
 
 def cluster_recommend(book_title, n=5):
 
@@ -83,9 +81,9 @@ def cluster_recommend(book_title, n=5):
 
     return recs[["Book Name","Author","Rating"]].head(n)
 
-# ==============================
+# ===============================
 # HYBRID RECOMMENDATION
-# ==============================
+# ===============================
 
 def hybrid_recommend(book_title, n=5):
 
@@ -107,18 +105,18 @@ def hybrid_recommend(book_title, n=5):
 
     return temp[["Book Name","Author","Rating"]].head(n)
 
-# ==============================
+# ===============================
 # UI
-# ==============================
+# ===============================
 
 st.title("📚 Audible Intelligent Book Recommendation System")
 
-st.write("Choose a recommendation model and book.")
+st.write("Select a recommendation model and book to get recommendations.")
 
 # Model selector
 
 model_type = st.radio(
-    "Recommendation Model",
+    "Choose Recommendation Model",
     ["Content Based","Clustering Based","Hybrid"]
 )
 
@@ -128,7 +126,9 @@ book_list = df["Book Name"].sort_values().unique()
 
 selected_book = st.selectbox("Select Book", book_list)
 
-# Recommendation
+# ===============================
+# RECOMMENDATION BUTTON
+# ===============================
 
 if st.button("Recommend"):
 
@@ -144,14 +144,26 @@ if st.button("Recommend"):
 
         recs = hybrid_recommend(selected_book)
 
-    st.subheader("Recommended Books")
+    st.subheader("📖 Recommended Books")
 
-    st.dataframe(recs)
+    st.dataframe(recs, use_container_width=True)
 
-# Top rated books
+    # =================================
+    # TOP BOOKS IN SAME CLUSTER
+    # =================================
 
-st.subheader("⭐ Top Rated Books")
+    st.subheader("⭐ Top Books in Similar Category")
 
-top_books = df.sort_values("Rating", ascending=False).head(10)
+    cluster = df[df["Book Name"] == selected_book]["cluster"].values[0]
 
-st.dataframe(top_books[["Book Name","Author","Rating"]])
+    cluster_books = df[df["cluster"] == cluster]
+
+    top_cluster_books = cluster_books.sort_values(
+        "Rating",
+        ascending=False
+    ).head(5)
+
+    st.dataframe(
+        top_cluster_books[["Book Name","Author","Rating"]],
+        use_container_width=True
+    )
