@@ -164,13 +164,33 @@ col3.metric("Average Rating", round(df["Rating"].mean(),2))
 
 # Genre distribution
 
-st.subheader("Top Genres")
+import re
 
-genre_counts = df["Ranks and Genre"].value_counts().head(10)
+# Extract clean genre names
+def extract_genre(text):
 
-fig, ax = plt.subplots()
+    if pd.isna(text):
+        return "Unknown"
+
+    match = re.search(r"in (.*?) \(", text)
+
+    if match:
+        return match.group(1)
+
+    return "Unknown"
+
+
+df["Genre"] = df["Ranks and Genre"].apply(extract_genre)
+
+genre_counts = df["Genre"].value_counts().head(10)
+
+fig, ax = plt.subplots(figsize=(8,4))
 
 genre_counts.plot(kind="bar", ax=ax)
+
+ax.set_xlabel("Genre")
+ax.set_ylabel("Number of Books")
+ax.set_title("Top Genres")
 
 plt.xticks(rotation=45)
 
